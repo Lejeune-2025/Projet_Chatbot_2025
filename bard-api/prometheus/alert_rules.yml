@@ -1,0 +1,135 @@
+groups:
+  - name: yonework_alerts
+    rules:
+      # Alerte pour les erreurs HTTP élevées
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(yonework_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          sum(rate(yonework_http_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: yonework
+          service: api
+        annotations:
+          summary: "Taux d'erreurs HTTP élevé"
+          description: "Le taux d'erreurs HTTP est supérieur à 10% sur les 5 dernières minutes"
+          runbook_url: "https://wiki.yonework.com/runbooks/high-error-rate"
+
+      # Alerte pour les requêtes lentes
+      - alert: SlowRequests
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(yonework_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: yonework
+          service: api
+        annotations:
+          summary: "Requêtes HTTP lentes détectées"
+          description: "95% des requêtes prennent plus de 2 secondes"
+          runbook_url: "https://wiki.yonework.com/runbooks/slow-requests"
+
+      # Alerte pour les conversations actives élevées
+      - alert: HighActiveConversations
+        expr: yonework_active_conversations > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: yonework
+          service: chat
+        annotations:
+          summary: "Nombre élevé de conversations actives"
+          description: "Plus de 100 conversations actives simultanées"
+          runbook_url: "https://wiki.yonework.com/runbooks/high-active-conversations"
+
+      # Alerte pour les erreurs de cache
+      - alert: CacheErrors
+        expr: |
+          sum(rate(yonework_errors_total{type="cache"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: yonework
+          service: cache
+        annotations:
+          summary: "Erreurs de cache détectées"
+          description: "Des erreurs de cache sont survenues dans les dernières minutes"
+          runbook_url: "https://wiki.yonework.com/runbooks/cache-errors"
+
+      # Alerte pour les recherches lentes
+      - alert: SlowKnowledgeSearches
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(yonework_knowledge_search_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: yonework
+          service: knowledge
+        annotations:
+          summary: "Recherches dans la base de connaissances lentes"
+          description: "95% des recherches prennent plus d'une seconde"
+          runbook_url: "https://wiki.yonework.com/runbooks/slow-knowledge-searches"
+
+      # Alerte pour le ratio de cache bas
+      - alert: LowCacheHitRatio
+        expr: |
+          sum(yonework_knowledge_cache_hits_total) 
+          / 
+          sum(yonework_knowledge_cache_requests_total) < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          team: yonework
+          service: cache
+        annotations:
+          summary: "Ratio de cache bas"
+          description: "Le ratio de hits de cache est inférieur à 50%"
+          runbook_url: "https://wiki.yonework.com/runbooks/low-cache-hit-ratio"
+
+      # Alerte pour les erreurs de base de données
+      - alert: DatabaseErrors
+        expr: |
+          sum(rate(yonework_errors_total{type="database"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: yonework
+          service: database
+        annotations:
+          summary: "Erreurs de base de données détectées"
+          description: "Des erreurs de base de données sont survenues dans les dernières minutes"
+          runbook_url: "https://wiki.yonework.com/runbooks/database-errors"
+
+      # Alerte pour la mémoire Redis
+      - alert: HighRedisMemory
+        expr: |
+          redis_memory_used_bytes > 1e9
+        for: 5m
+        labels:
+          severity: warning
+          team: yonework
+          service: redis
+        annotations:
+          summary: "Utilisation mémoire Redis élevée"
+          description: "La mémoire utilisée par Redis dépasse 1GB"
+          runbook_url: "https://wiki.yonework.com/runbooks/high-redis-memory"
+
+      # Alerte pour la disponibilité du service
+      - alert: ServiceDown
+        expr: |
+          up{job="yonework"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: yonework
+          service: api
+        annotations:
+          summary: "Service YoneWork indisponible"
+          description: "Le service YoneWork n'est pas accessible depuis {{ $labels.instance }}"
+          runbook_url: "https://wiki.yonework.com/runbooks/service-down" 
