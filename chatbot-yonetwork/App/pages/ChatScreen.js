@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, Image, Alert, ActivityIndicator, TouchableOpacity, Text, Animated, ScrollView, Dimensions, Platform, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { GiftedChat, Bubble, Send, InputToolbar, Composer } from 'react-native-gifted-chat';
 import { getBard } from '../Services/GlobalApi';
 import { API_CONFIG } from '../Services/constants';
@@ -12,6 +12,8 @@ import ChatFaceData from '../Services/ChatFaceData';
 import Sidebar from '../components/Sidebar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary, MediaType } from 'react-native-image-picker';
+
+
 
 
 
@@ -45,11 +47,15 @@ const ChatScreen = () => {
     const contentWidth = useRef(new Animated.Value(SCREEN_WIDTH - (isSidebarVisible ? SIDEBAR_WIDTH : 50))).current;
     const [menuButtonOpacity] = useState(new Animated.Value(1));
     const fadeAnim = new Animated.Value(0);
+    
+
 
     // S'assurer que l'indicateur de frappe est désactivé au démarrage
     useEffect(() => {
         setIsTyping(false);
     }, []);
+
+
 
     // 🔧 Fonction pour nettoyer le Markdown
     const cleanMarkdown = (text) => {
@@ -62,6 +68,8 @@ const ChatScreen = () => {
         .replace(/\[.*?\]\(.*?\)/g, '')    // liens
         .trim();
 };
+    
+
     // Gérer l'affichage/masquage de la sidebar avec animation
     const toggleSidebar = (visible) => {
         setIsSidebarVisible(visible);
@@ -134,6 +142,93 @@ const ChatScreen = () => {
             useNativeDriver: Platform.OS !== 'web',
         }).start();
     }, [isConnected, fadeAnim]);
+
+    // Fonction pour charger les nouveaux messages depuis l'historique global
+    const loadNewMessagesFromHistory = useCallback(async () => {
+        try {
+            console.log('🔄 Vérification des nouveaux messages dans l\'historique global...');
+            
+            // Récupérer l'historique global complet
+            const globalHistory = await conversationHistory.getFullHistory();
+            
+            if (globalHistory.length === 0) {
+                console.log('📭 Aucun message dans l\'historique global');
+                return;
+            }
+
+            // Récupérer l'ID de conversation actuel
+            const currentConvId = await conversationHistory.getConversationId();
+            console.log('🆔 ID de conversation actuel:', currentConvId);
+
+            // Mettre à jour l'ID de conversation si nécessaire
+            if (currentConvId && currentConvId !== conversationId) {
+                setConversationId(currentConvId);
+                console.log('🔄 ID de conversation mis à jour:', currentConvId);
+            }
+
+            // Comparer avec les messages actuellement affichés
+            const currentMessageTexts = messages.map(msg => msg.text);
+            
+            // Identifier les nouveaux messages qui ne sont pas encore affichés
+            const newMessages = globalHistory.filter(historyMsg => {
+                // Vérifier si ce message n'est pas déjà affiché
+                return !currentMessageTexts.includes(historyMsg.content);
+            });
+
+            if (newMessages.length > 0) {
+                console.log(`📥 ${newMessages.length} nouveaux messages trouvés dans l'historique`);
+                
+                // Convertir les nouveaux messages au format GiftedChat
+                const formattedNewMessages = newMessages.map((msg, index) => ({
+                    _id: `history_${Date.now()}_${index}`,
+                    text: msg.content,
+                    createdAt: new Date(msg.timestamp || Date.now()),
+                    user: {
+                        _id: msg.role === 'assistant' ? 2 : 1,
+                        name: msg.role === 'assistant' ? (selectedFace?.name || 'Assistant') : 'Vous',
+                        avatar: msg.role === 'assistant' ? selectedFace?.image : undefined
+                    },
+                    // Marquer comme message vocal pour le distinguer
+                    isVoiceMessage: true
+                }));
+
+                // Ajouter les nouveaux messages à l'affichage
+                setMessages(previousMessages => {
+                    // Trier tous les messages par date pour un affichage chronologique correct
+                    const allMessages = [...previousMessages, ...formattedNewMessages];
+                    const sortedMessages = allMessages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                    
+                    console.log('💬 Messages mis à jour avec l\'historique vocal');
+                    return sortedMessages;
+                });
+
+                // Masquer l'écran de bienvenue s'il y a de nouveaux messages
+                if (showWelcome) {
+                    setShowWelcome(false);
+                }
+
+                // Afficher une notification discrète à l'utilisateur
+                console.log('✅ Conversation vocale intégrée au chat principal');
+            } else {
+                console.log('✅ Historique déjà à jour');
+            }
+
+        } catch (error) {
+            console.error('❌ Erreur lors du chargement des nouveaux messages:', error);
+        }
+    }, [messages, conversationId, selectedFace, showWelcome]);
+
+    // Vérifier les nouveaux messages quand l'écran devient actif
+    useFocusEffect(
+        useCallback(() => {
+            // Délai pour laisser le temps aux autres écrans de sauvegarder
+            const timeoutId = setTimeout(() => {
+                loadNewMessagesFromHistory();
+            }, 500);
+
+            return () => clearTimeout(timeoutId);
+        }, [loadNewMessagesFromHistory])
+    );
 
     // Vérification de la configuration
     useEffect(() => {
@@ -683,7 +778,20 @@ const MessageBubble = (props) => {
 
 
 const renderBubble = (props) => {
-    return <MessageBubble {...props} />;
+    // Ajouter un indicateur visuel pour les messages vocaux
+    const isVoiceMessage = props.currentMessage?.isVoiceMessage;
+    
+    return (
+        <View>
+            {isVoiceMessage && (
+                <View style={styles.voiceIndicator}>
+                    <Ionicons name="mic" size={12} color="#667eea" />
+                    <Text style={styles.voiceIndicatorText}>Message vocal</Text>
+                </View>
+            )}
+            <MessageBubble {...props} />
+        </View>
+    );
 };
 
     const renderSend = (props) => {
@@ -753,27 +861,12 @@ const InputToolbarWithImage = (props) => {
                 </View>
             </View>
             <View style={styles.buttonsRow}>
-                <View style={styles.buttonGroup}>
-                    <TouchableOpacity style={styles.addButton} onPress={selectImage}>
-                        <Ionicons name="image" size={24} color="#ffffff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolsButton}>
-                        <Ionicons name="options" size={20} color="#ffffff" />
-                        <Text style={styles.toolsText}>Outils</Text>
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.buttonGroup}>
-                    <TouchableOpacity style={styles.micButton}>
-                        <Ionicons name="mic" size={24} color="#ffffff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.voiceButton}>
-                        <View style={styles.voiceIcon}>
-                            <View style={styles.voiceDot} />
-                            <View style={styles.voiceDot} />
-                            <View style={styles.voiceDot} />
-                        </View>
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.addButton} onPress={selectImage}>
+                    <Ionicons name="image" size={24} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('VoiceAssistant')}>
+                    <Ionicons name="mic" size={24} color="#ffffff" />
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -948,6 +1041,8 @@ const renderConnectionStatus = () => {
                     
                     {showWelcome && <WelcomeMessage />}
                     
+
+                    
             <GiftedChat
                 messages={messages}
                 onSend={messages => onSend(messages)}
@@ -1012,6 +1107,8 @@ const renderConnectionStatus = () => {
                     )}
                 </TouchableOpacity>
             </Modal>
+            
+
         </View>
     );
 };
@@ -1396,51 +1493,14 @@ const styles = StyleSheet.create({
     buttonsRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
         width: '100%',
         paddingHorizontal: 10,
     },
 
-    // Groupe de boutons côte à côte
-    buttonGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-    },
 
-    // Bouton micro
-    micButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#404040',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
 
-    // Bouton vocal avec points
-    voiceButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#404040',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
 
-    // Icône vocale avec points
-    voiceIcon: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    // Points de l'icône vocale
-    voiceDot: {
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: '#ffffff',
-        marginHorizontal: 1,
-    },
 
     // Conteneur de l'aperçu d'image
     imagePreviewContainer: {
@@ -1792,13 +1852,27 @@ const styles = StyleSheet.create({
         height: '100%',
         resizeMode: 'contain',
     },
-    messageImage: {
-    width: 180,
-    height: 120,
-    borderRadius: 10,
-    alignSelf: 'center',
-    marginTop: 5,
-   },
+
+    // Styles pour l'indicateur de message vocal
+    voiceIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 12,
+        marginBottom: 4,
+        alignSelf: 'center',
+    },
+    voiceIndicatorText: {
+        fontSize: 10,
+        color: '#667eea',
+        marginLeft: 4,
+        fontWeight: '500',
+    },
+
+
 
 });
 

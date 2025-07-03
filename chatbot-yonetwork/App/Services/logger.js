@@ -29,5 +29,6 @@ export const logger = {
     debug: (message, data) => log(logLevels.DEBUG, message, data),
     info: (message, data) => log(logLevels.INFO, message, data),
     warn: (message, data) => log(logLevels.WARN, message, data),
-    error: (message, data) => log(logLevels.ERROR, message, data)
+    error: (message, data) => log(logLevels.ERROR, message, data),
+    log: (message, data) => log(logLevels.INFO, message, data) // Alias pour compatibilité
 }; 

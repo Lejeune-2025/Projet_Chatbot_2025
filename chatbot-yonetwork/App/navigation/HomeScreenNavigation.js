@@ -6,6 +6,7 @@ import LoginScreen from '../pages/LoginScreen';
 import RegisterScreen from '../pages/RegisterScreen';
 import VerifyEmailScreen from '../pages/VerifyEmailScreen';
 import AuthScreen from '../pages/AuthScreen';
+import VoiceAssistantScreen from '../pages/VoiceAssistantScreen';
 import { logger } from '../Services/logger';
 import withTheme from '../components/withTheme';
 
@@ -16,6 +17,7 @@ const ThemedLoginScreen = withTheme(LoginScreen);
 const ThemedRegisterScreen = withTheme(RegisterScreen);
 const ThemedVerifyEmailScreen = withTheme(VerifyEmailScreen);
 const ThemedAuthScreen = withTheme(AuthScreen);
+const ThemedVoiceAssistantScreen = withTheme(VoiceAssistantScreen);
 
 const Stack = createNativeStackNavigator();
 
@@ -76,6 +78,14 @@ export default function HomeScreenNavigation({ initialAuthenticated = false }) {
                 options={{
                     gestureEnabled: false,
                     animation: 'fade'
+                }}
+            />
+            <Stack.Screen 
+                name="VoiceAssistant" 
+                component={ThemedVoiceAssistantScreen}
+                options={{
+                    gestureEnabled: true,
+                    animation: 'slide_from_bottom'
                 }}
             />
         </Stack.Navigator>
